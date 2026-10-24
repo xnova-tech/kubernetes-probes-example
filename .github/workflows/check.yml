@@ -19,8 +19,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: python -m pip install -r requirements.txt -r requirements-dev.txt
       - name: Check HTTP states
-        run: python -I probe_smoke.py
+        run: python probe_smoke.py
+      - name: Check regressions
+        run: python -m pytest -q
 
   image:
     runs-on: ubuntu-latest

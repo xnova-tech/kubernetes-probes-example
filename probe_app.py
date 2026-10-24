@@ -1,41 +1,40 @@
-"""Minimal probe demo: readiness changes independently from process liveness."""
+"""Two independent HTTP probes for the Kubernetes example."""
 
 import os
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-
-def make_handler(flag_file: Path, live_fail_file: Path | None = None):
-    class ProbeHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            if self.path == "/live":
-                status, body = (
-                    (503, b"not alive\n")
-                    if live_fail_file is not None and live_fail_file.exists()
-                    else (200, b"alive\n")
-                )
-            elif self.path == "/ready":
-                status, body = (503, b"not ready\n") if flag_file.exists() else (200, b"ready\n")
-            else:
-                status, body = 404, b"not found\n"
-            self.send_response(status)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, format, *args):
-            pass
-
-    return ProbeHandler
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 
 
-def main():
-    flag = Path(os.environ.get("UNREADY_FILE", "/state/unready"))
-    live_fail = Path(os.environ.get("LIVE_FAIL_FILE", "/state/unlive"))
-    port = int(os.environ.get("PORT", "8080"))
-    with ThreadingHTTPServer(("0.0.0.0", port), make_handler(flag, live_fail)) as server:
-        server.serve_forever()
+def create_app(unready_file: Path | None = None, unlive_file: Path | None = None) -> FastAPI:
+    """Build an app whose probe state is controlled by two separate files."""
+    unready_file = unready_file or Path(os.getenv("UNREADY_FILE", "/state/unready"))
+    unlive_file = unlive_file or Path(os.getenv("LIVE_FAIL_FILE", "/state/unlive"))
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+    @app.get("/ready", response_class=PlainTextResponse)
+    def ready() -> PlainTextResponse:
+        if unready_file.exists():
+            return PlainTextResponse("not ready\n", status_code=503)
+        return PlainTextResponse("ready\n")
+
+    @app.get("/live", response_class=PlainTextResponse)
+    def live() -> PlainTextResponse:
+        if unlive_file.exists():
+            return PlainTextResponse("not alive\n", status_code=503)
+        return PlainTextResponse("alive\n")
+
+    return app
+
+
+app = create_app()
+
+
+def main() -> None:
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")), access_log=False)
 
 
 if __name__ == "__main__":

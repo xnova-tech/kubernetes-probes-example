@@ -4,16 +4,19 @@
 
 ## Требования и локальная проверка
 
-Нужны Docker, kind, совместимый с кластером `kubectl` и Python 3.12 или новее. Команды ниже рассчитаны на терминал macOS или Linux; в Windows используйте PowerShell и подставьте имя Pod вручную. Dockerfile закрепляет Python 3.12.12 по digest. Других Python-зависимостей нет.
+Нужны Docker, kind, совместимый с кластером `kubectl` и Python 3.12. Команды ниже рассчитаны на терминал macOS или Linux; в Windows используйте PowerShell и подставьте имя Pod вручную. Dockerfile закрепляет Python 3.12.12 по digest. Версии FastAPI, Uvicorn и их зависимостей закреплены в `requirements.txt`; зависимости локальных проверок находятся в `requirements-dev.txt`.
 
 ```bash
 git clone https://github.com/xnova-tech/kubernetes-probes-example.git
 cd kubernetes-probes-example
-python -I probe_smoke.py
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/python probe_smoke.py
+.venv/bin/python -m pytest -q
 docker build -t xnova-probes:local .
 ```
 
-Smoke-тест проверяет последовательность ответов `(live, ready)`: `(200, 200)` → `(200, 503)` → `(200, 200)`, затем отдельный отказ liveness `(503, 200)` и восстановление `(200, 200)`. Неизвестный путь даёт `404`. Этот тест не проверяет Kubernetes.
+В Windows создайте окружение командой `py -3.12 -m venv .venv` и замените `.venv/bin/python` на `.venv\Scripts\python.exe`. Smoke через FastAPI `TestClient` проверяет последовательность ответов `(live, ready)`: `(200, 200)` → `(200, 503)` → `(200, 200)`, затем отдельный отказ liveness `(503, 200)` и восстановление `(200, 200)`. Регрессионные тесты дополнительно проверяют тело, тип ответа и переменные окружения. Эти проверки не проверяют Kubernetes.
 
 ## Запуск кластера
 
@@ -80,7 +83,7 @@ kubectl exec POD_NAME -- rm /state/unlive
 
 Дождитесь превышения `livenessProbe.failureThreshold`; `restartCount` этого Pod должен увеличиться. Удалите флаг, чтобы восстановить `/live`. Если exec попал в окно рестарта, повторите удаление после запуска контейнера. Сверьте `metadata.uid`: рост счётчика в том же UID означает рестарт контейнера, другой UID означает замену Pod.
 
-Этот стенд с одной репликой показывает реакцию probes и EndpointSlice, но не доказывает доступность многорепличного сервиса или отсутствие потерь уже открытых соединений. Файл-флаг не моделирует настоящую базу данных; `http.server` здесь только лабораторный сервер.
+Этот стенд с одной репликой показывает реакцию probes и EndpointSlice, но не доказывает доступность многорепличного сервиса или отсутствие потерь уже открытых соединений. Файл-флаг не моделирует настоящую базу данных; FastAPI здесь обслуживает только два лабораторных сигнала.
 
 ## Очистка
 
